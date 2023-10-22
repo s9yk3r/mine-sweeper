@@ -51,17 +51,31 @@
 	<!-- main container for the mine sweeper game-->
 	<main>
 		<section class="gridContainer mx-auto"
-				:style="'width: ' + currentGame.gridWidth + 'px; height: ' + currentGame.gridHeight + 'px;'">
+				:style="'width: '+currentGame.gridWidth+'px; height: '+currentGame.gridHeight+'px;'">
 
 			<div class="mineSweeperGrid d-flex flex-wrap"
 				:class="[ currentGame.gameOver ? 'gameOver' : '', currentGame.victory ? 'victory' : '' ]"
 				ref="grid">
 				<template v-for="(tile, i) in currentGame.tiles"
 						:key="i">
-					<div class="gridTile"
+					<div class="gridTile position-relative"
 						:class="[ tile.hasBeenClicked ? 'clicked' : '' ]"
-						:style="'width: ' + currentGame.tileSide + 'px; height: ' + currentGame.tileSide + 'px;'"
+						:data-i="i"
+						:style="'width: '+currentGame.tileSide+'px; height: '+currentGame.tileSide+'px;'"
 						@click="tileClicked(i)">
+
+						<div v-if="!tile.hasBomb && tile.hasBeenClicked"
+							class="d-flex justify-content-center align-items-center safeTileValue h-100 fw-bold">
+							<span :class="'tileValue-'+tile.value">
+								{{ tile.value }}
+							</span>
+						</div>
+						<div v-if="tile.hasBomb && !currentGame.initialized"
+							class="position-absolute bombTileOverlay"
+							:style="'width: '+((currentGame.tileSide * 3) - (currentGame.tileSide / 2))+'px; height: '+((currentGame.tileSide * 3) - (currentGame.tileSide / 2))+'px; '+
+									'left: -'+ (currentGame.tileSide - 7)+'px; top: -'+(currentGame.tileSide - 7)+'px;'">
+
+						</div>
 						<div v-if="tile.hasBeenClicked && tile.hasExploded"
 							class="bombHasExploded">
 							<img title="boom"
@@ -132,7 +146,8 @@ export default
 				currentScore: 0,
 				gameOver: false,
 				victory: false,
-			}			
+				initialized: false,
+			}
 		}
 	},
 	name: 'App',
@@ -158,8 +173,8 @@ export default
 			// if the clicked tile doesn't have a bomb
 			if(!tile.hasBomb)
 			{
-				// incrementing the score by one
-				this.currentGame.currentScore++;
+				// incrementing the score by the tile's value + 1
+				this.currentGame.currentScore += (tile.value + 1);
 
 				// incrementing the clicked tiles counter
 				this.currentGame.clickedTiles++;
@@ -245,6 +260,9 @@ export default
 
 			// generating a new ID for the game
 			this.currentGame.gameId = Math.random().toString(36).slice(2, 12);
+
+			// generating a new ID for the game
+			this.currentGame.initialized = false;
 
 			// resetting game's vars
 			this.currentGame.tiles = [];
@@ -338,10 +356,64 @@ export default
 				this.currentGame.tiles.push({
 					id: i,
 					hasBomb: (bombsTiles.includes(i)), // if the tile should have a bomb, register it
-					hasBeenClicked: false,
-					hasExploded: false,
+					hasBeenClicked: false, // the tile as been clicked
+					hasExploded: false, // the tile is exploded
+					value: 0, // number of points given by the tile on click (if it's not a bomb)
 				});
 			}
+
+			// defining cells values; I'm doing this in another cycle so I can be sure that bombs was fully deployed
+			// TODO find a better way to do this
+			this.$nextTick(() =>
+			{
+				this.currentGame.tiles.forEach((tile) =>
+				{
+					// skipping tiles without bombs
+					if(!tile.hasBomb)
+					{
+						return;
+					}
+
+					const i = tile.id;
+
+					// recovering the tile's overlay
+					const bombTile = this.$refs.grid.querySelector(`.gridTile[data-i="${i}"]`);
+					const bombTileOverlay = bombTile.querySelector('.bombTileOverlay');
+
+					// if it was possible to retrieve a tile overlay
+					if(typeof bombTileOverlay !== 'undefined' && bombTileOverlay)
+					{
+						// cycling again through every existing tile that isn't a bomb to figure out if
+						// the bomb tile overlay is overlapping it: the purpose of all these cycles is to establish
+						// if a safe tile is near a bomb tile, so that i can assign points to it based on the number of near bombs.
+						// TODO find a better way do to this; i could just do some maths for every bomb tile to calculate
+						// the indexes of safe tiles and put numbers to them without cycling through them for every damn bomb;
+						// it's a poor solution
+						this.currentGame.tiles.forEach((tile) =>
+						{
+							// skipping tiles with bombs
+							if(tile.hasBomb)
+							{
+								return;
+							}
+							const i = tile.id;
+							const safeTile = this.$refs.grid.querySelector(`.gridTile[data-i="${i}"]`);
+
+							// checking if the bombTileOverlay is overlapping the safe tile
+							const isOverlapping = this.checkOverlapping(bombTileOverlay, safeTile);
+
+							// if is overlapping
+							if(isOverlapping)
+							{
+								// incrementing the free tile's value
+								tile.value++;
+							}
+						});
+					}
+				});
+
+				this.currentGame.initialized = true;
+			})
 		},
 		saveGame()
 		{
@@ -400,6 +472,14 @@ export default
 
 			// showing an alert message
 			alert('The game as been loaded');
+		},
+		checkOverlapping(bombTileOverlay, tile)
+		{
+			const overlayRect = bombTileOverlay.getBoundingClientRect();
+			const elementToCheckRect = tile.getBoundingClientRect();
+
+			return !(overlayRect.top > elementToCheckRect.bottom || overlayRect.right < elementToCheckRect.left ||
+					overlayRect.bottom < elementToCheckRect.top ||overlayRect.left > elementToCheckRect.right);
 		}
 	},
 	mounted() {
@@ -466,5 +546,16 @@ body { height: 100%; }
 	.mineSweeperGrid.victory {
 		cursor: not-allowed;
 	}
+	.bombTileOverlay {
+		background: rgba(0,0,0,.75);
+		z-index: 1;
+	}
+	.safeTileValue {}
+	.tileValue-0 { color: #000000; }
+	.tileValue-1 { color: #0101ff; }
+	.tileValue-2 { color: #007b00; }
+	.tileValue-3 { color: #ff0101; }
+	.tileValue-4 { color: #00007b; }
+	.tileValue-5 { color: #7b0000; }
 }
 </style>
