@@ -62,7 +62,8 @@
 						:class="[ tile.hasBeenClicked ? 'clicked' : '' ]"
 						:data-i="i"
 						:style="'width: '+currentGame.tileSide+'px; height: '+currentGame.tileSide+'px;'"
-						@click="tileClicked(i)">
+						@click="tileClicked(i)"
+						@contextmenu.prevent="setFlag(i)">
 
 						<div v-if="!tile.hasBomb && tile.hasBeenClicked"
 							class="d-flex justify-content-center align-items-center safeTileValue h-100 fw-bold">
@@ -74,7 +75,6 @@
 							class="position-absolute bombTileOverlay"
 							:style="'width: '+((currentGame.tileSide * 3) - (currentGame.tileSide / 2))+'px; height: '+((currentGame.tileSide * 3) - (currentGame.tileSide / 2))+'px; '+
 									'left: -'+ (currentGame.tileSide - 7)+'px; top: -'+(currentGame.tileSide - 7)+'px;'">
-
 						</div>
 						<div v-if="tile.hasBeenClicked && tile.hasExploded"
 							class="bombHasExploded">
@@ -84,11 +84,33 @@
 								src="./assets/explosion.png">
 						</div>
 						<div v-if="tile.hasBomb && (currentGame.gameOver || currentGame.victory &&  !tile.hasExploded)"
-							class="tileHasBomb">
+							class="tileHasBomb"
+							:class="[ tile.hasFlag ? 'defused' : '']">
 							<img title="bomb"
 								:width="(currentGame.tileSide - 3)"
 								:height="(currentGame.tileSide - 3)"
 								src="./assets/bomb.png">
+						</div>
+						<div v-if="tile.hasFlag && tile.hasBomb && (currentGame.gameOver || currentGame.victory &&  !tile.hasExploded)"
+							class="tileHasDefusedBomb text-center position-absolute w-100 h-100">
+							<img title="defused"
+								:width="(currentGame.tileSide - 20)"
+								:height="(currentGame.tileSide - 20)"
+								src="./assets/close.png">
+						</div>
+						<div v-if="tile.hasQuestionMark"
+							class="tileHasQuestionMark text-center">
+							<img title="question-mark"
+								:width="(currentGame.tileSide - 20)"
+								:height="(currentGame.tileSide - 20)"
+								src="./assets/question-sign.png">
+						</div>
+						<div v-if="tile.hasFlag"
+							class="tilehasFlag text-center">
+							<img title="flag"
+								:width="(currentGame.tileSide - 20)"
+								:height="(currentGame.tileSide - 20)"
+								src="./assets/red-flag.png">
 						</div>
 					</div>
 				</template>
@@ -109,7 +131,19 @@
 			target="_blank">DinosoftLabs</a> -
 		<a href="https://www.flaticon.com/free-icons/try"
 			title="try icons"
-			target="_blank">IYIKON</a>
+			target="_blank">IYIKON</a> -
+		<a href="https://www.flaticon.com/free-icons/red-flag"
+			title="red flag icons"
+			target="_blank">Alfredo Hernandez</a>
+		<a href="https://www.flaticon.com/free-icons/question"
+			title="question icons"
+			target="_blank">Dave Gandy</a> -
+		<a href="https://www.flaticon.com/free-icons/close"
+			title="close icons"
+			target="_blank">Pixel perfect</a>
+
+
+
 	</footer>
 </template>
 
@@ -162,7 +196,8 @@ export default
 			const tile = this.currentGame.tiles[i];
 
 			// if the game is already ended, or if tile is undefined or it's already clicked, we'll just skip the rest of the function
-			if(this.currentGame.gameOver || this.currentGame.victory || typeof tile == 'undefined' || !tile || tile.hasBeenClicked)
+			if(this.currentGame.gameOver || this.currentGame.victory || typeof tile == 'undefined' || !tile || tile.hasBeenClicked ||
+			tile.hasQuestionMark || tile.hasFlag)
 			{
 				return;
 			}
@@ -182,6 +217,14 @@ export default
 				// if there aren't free tiles anymore
 				if((this.currentGame.totalBombs + this.currentGame.clickedTiles) === this.currentGame.tilesCount)
 				{
+					// calculating the final score based on the flags
+					const defusedBombs = this.$refs.grid.querySelectorAll('.tileHasDefusedBomb');
+
+					// if there are flags on the game board (aka defused bombs)
+					if(defusedBombs && defusedBombs.length > 0) {
+						this.currentGame.currentScore += (defusedBombs.length * 5);
+					}
+
 					// is this the new higher score?
 					if(this.currentGame.currentScore > this.app.hiScore)
 					{
@@ -190,7 +233,6 @@ export default
 
 					// the game is won!
 					this.currentGame.victory = true;
-
 					// if the current game was a previous saved game
 					if(this.app.savedGameId && this.currentGame.gameId === this.app.savedGameId)
 					{
@@ -230,6 +272,33 @@ export default
 				// there aren't saved games anymore
 				this.app.savedGameId = '';
 				this.app.availableSavedGame = false;
+			}
+		},
+		setFlag(i)
+		{
+			// retrieving datas about clicked tile in out general tileset array
+			const tile = this.currentGame.tiles[i];
+
+			// if the game is already ended, or if tile is undefined or it's already clicked, we'll just skip the rest of the function
+			if(this.currentGame.gameOver || this.currentGame.victory || typeof tile == 'undefined' || !tile || tile.hasBeenClicked)
+			{
+				return;
+			}
+
+			// if the tile has already a flag
+			if(tile.hasFlag)
+			{
+				// show the question mark
+				tile.hasFlag = false;
+				tile.hasQuestionMark = true;
+			}
+			else if(tile.hasQuestionMark) // else if the tile has already a question mark, reset the state of the tile
+			{
+				tile.hasQuestionMark = false;
+			}
+			else // else, just show the flag
+			{
+				tile.hasFlag = true;
 			}
 		},
 		saveHiScore()
@@ -359,6 +428,8 @@ export default
 					hasBeenClicked: false, // the tile as been clicked
 					hasExploded: false, // the tile is exploded
 					value: 0, // number of points given by the tile on click (if it's not a bomb)
+					hasFlag: false, // flag that establish if the tile has a flag on it
+					hasQuestionMark: false, // flag that establish if the tile has a question mark on it
 				});
 			}
 
@@ -421,6 +492,14 @@ export default
 			const savedGame = localStorage.getItem('s9yk3rMineSweeper_savedGame');
 
 			let confirmed = true;
+
+			// if the game is already ended
+			if(this.currentGame.gameOver || this.currentGame.victory)
+			{
+				// showing a confirmation request
+				alert('The game is already endend, you can\'t save it!');
+				return;
+			}
 
 			// there was already a saved game
 			if(typeof savedGame !== 'undefined' && savedGame)
@@ -557,5 +636,12 @@ body { height: 100%; }
 	.tileValue-3 { color: #ff0101; }
 	.tileValue-4 { color: #00007b; }
 	.tileValue-5 { color: #7b0000; }
+	.tileHasDefusedBomb {
+		top: 0;
+		right: 0;
+		left: 0;
+		bottom: 0;
+	}
+	.tileHasBomb.defused { opacity: .4; }
 }
 </style>
